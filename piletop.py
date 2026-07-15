@@ -120,7 +120,7 @@ class PiletopApp(App):
     
     CSS = """
     Screen {
-        background: black;
+        background: rgb(0, 0, 0);
         overflow: hidden; 
         layout: vertical;
     }
@@ -248,7 +248,7 @@ class PiletopApp(App):
                 total_text = Text("\n").join(all_lines)
         else:
             best_cols, best_rows, inner_char_w, inner_char_h = layout
-            gap_style = Style(bgcolor="black")
+            gap_style = Style(bgcolor="rgb(0,0,0)") # 强制使用真彩纯黑
             label_style = Style(color="white", bold=True)  
             
             indexed_cores = list(range(self.core_count))
@@ -258,31 +258,40 @@ class PiletopApp(App):
             
             for r_idx, row_cores in enumerate(rows_data):
                 label_line = Text()
-                color_lines = [Text() for _ in range(inner_char_h)]
+                label_segments = []
                 
                 for core_id in row_cores:
-                    if core_id < len(self.current_usages):
-                        core_usage = self.current_usages[core_id]
-                    else:
-                        core_usage = 0.0
-                    style = interpolate_color(low_color, high_color, core_usage / 100.0)
-                    
                     label = f"{core_id}"
                     label_len = len(label)
+                    single_label = Text()
                     if inner_char_w >= label_len:
                         remaining = inner_char_w - label_len
                         left = remaining // 2
                         right = remaining - left
-                        label_line.append(" " * left + label + " " * right, style=label_style)
+                        single_label.append(" " * left + label + " " * right, style=label_style)
                     else:
-                        label_line.append(label[:inner_char_w], style=label_style)
-                    label_line.append(" ", style=gap_style)
-                    
-                    for h in range(inner_char_h):
-                        color_lines[h].append(" " * inner_char_w, style=style)
-                        color_lines[h].append(" ", style=gap_style)
-                
+                        single_label.append(label[:inner_char_w], style=label_style)
+                    label_segments.append(single_label)
+                label_line = Text(" ", style=gap_style).join(label_segments)
                 all_lines.append(label_line)
+                
+                color_lines = [Text() for _ in range(inner_char_h)]
+                
+                for h in range(inner_char_h):
+                    row_segments = [] 
+                    
+                    for core_id in row_cores:
+                        if core_id < len(self.current_usages):
+                            core_usage = self.current_usages[core_id]
+                        else:
+                            core_usage = 0.0
+                            
+                        style = interpolate_color(low_color, high_color, core_usage / 100.0)
+                        single_block = Text(" " * inner_char_w, style=style)
+                        row_segments.append(single_block)
+                    
+                    color_lines[h] = Text(" ", style=gap_style).join(row_segments)
+                
                 all_lines.extend(color_lines)
                 
             total_text = Text("\n").join(all_lines)
