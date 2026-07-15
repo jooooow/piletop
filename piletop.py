@@ -66,12 +66,21 @@ class PiletopApp(App):
     Screen {
         background: black;
         overflow: hidden; 
+        layout: vertical;
     }
     #main-display {
         width: 100%;
-        height: 100%;
+        height: 1fr;
         content-align: center middle;
         overflow: hidden; 
+    }
+    #footer-display {
+        width: 100%;
+        height: 1;
+        background: rgb(20,20,20);
+        color: rgb(150,150,150);
+        content-align: center middle;
+        text-style: dim;
     }
     """
 
@@ -83,6 +92,10 @@ class PiletopApp(App):
         self.core_count = psutil.cpu_count(logical=True)
         self.current_usages = [0.0] * self.core_count
         yield Static(id="main-display")
+        yield Static(
+            "\[q] Quit | Red (High CPU) -> Green (Low CPU)", 
+            id="footer-display"
+        )
 
     def on_mount(self) -> None:
         psutil.cpu_percent(interval=None, percpu=True)
@@ -97,7 +110,7 @@ class PiletopApp(App):
 
     def draw_heatmap(self) -> None:
         terminal_w = max(10, self.size.width)
-        terminal_h = max(6, self.size.height)
+        terminal_h = max(6, self.size.height - 1)
 
         layout = calculate_layout(
             core_count=self.core_count,
