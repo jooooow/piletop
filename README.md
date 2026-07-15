@@ -14,7 +14,7 @@ uv tool install git+https://github.com/jooooow/piletop.git
 piletop
 ```
 
-![alt text](example.png)
+![alt text](image.png)
 
 ## Keys
 - `q`: Quit
