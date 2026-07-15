@@ -1,17 +1,24 @@
 # piletop
 
-A sleek, responsive, and adaptive CPU core heatmap visualizer for your terminal. 
-
-Built with Python, Textual, and Rich.
-
-## Features
-
-- **Adaptive Layout**: Automatically recalculates grids and core sizes based on your terminal window size.
-- **Dynamic Color Scale**: Smooth green-to-red gradient representing CPU core usage (0% to 100%).
-- **Interactive**: Press `q` to quit instantly.
+A live CPU core heatmap. Just pure color.
 
 ## Installation
 
 ```
 uv tool install git+https://github.com/jooooow/piletop.git 
 ```
+
+## Usage
+
+```
+piletop
+```
+
+![alt text](example.png)
+
+## Keys
+- `q`: Quit
+- `t`: Switch theme
+
+## Options
+- `-i`: Set refresh interval (default is 0.5 seconds)
