@@ -80,48 +80,36 @@ def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_asp
     if terminal_h < 3 or terminal_w < 6:
         return None
 
-    best_cols = None
-    best_rows = None
-    best_score = (float('inf'), float('inf'))
-
-    for cols in range(1, core_count + 1):
-        rows = math.ceil(core_count / cols)
-        empty_slots = (cols * rows) - core_count
+    for inner_h in range(10, 0, -1):
+        inner_w = round(inner_h * char_aspect)
         
-        cell_w = terminal_w / cols
-        cell_h = terminal_h / rows
-        cell_h_equivalent_w = cell_h * char_aspect
-        aspect_ratio = cell_w / cell_h_equivalent_w
-        ratio_deviation = abs(aspect_ratio - 1.2)
+        if inner_w % 2 != 0 and inner_w > 2:
+            inner_w -= 1
+            
+        cell_physical_w = inner_w + 1
+        cell_physical_h = inner_h + 1 
         
-        if cell_w >= 3 and cell_h >= 2: 
-            current_score = (empty_slots, ratio_deviation)
-            if best_score is None or current_score < best_score:
-                best_score = current_score
-                best_cols = cols
-                best_rows = rows
+        max_cols = math.floor(terminal_w / cell_physical_w)
+        max_rows = math.floor(terminal_h / cell_physical_h)
+        
+        if max_cols * max_rows >= core_count:
+            best_cols = min(core_count, max_cols)
+            best_rows = math.ceil(core_count / best_cols)
+            return best_cols, best_rows, inner_w, inner_h
 
-    if best_cols is None or best_rows is None:
-        return None
 
-    total_cell_h = max(2, math.floor(terminal_h / best_rows))
-    inner_char_h = max(1, total_cell_h - 1) 
+    inner_w, inner_h = 2, 1
+    cell_physical_w = inner_w + 1
+    cell_physical_h = inner_h + 1
+    max_cols = math.floor(terminal_w / cell_physical_w)
+    max_rows = math.floor(terminal_h / cell_physical_h)
     
-    inner_char_w = max(2, round(inner_char_h * char_aspect))
-    
-    max_width = math.floor(terminal_w / best_cols) - 1
-    max_width = max(2, max_width)
-    if inner_char_w > max_width:
-        inner_char_w = max_width
+    if max_cols * max_rows >= core_count:
+        best_cols = min(core_count, max_cols)
+        best_rows = math.ceil(core_count / best_cols)
+        return best_cols, best_rows, inner_w, inner_h
 
-    if inner_char_w % 2 != 0 and inner_char_w > 2:
-        inner_char_w = inner_char_w - 1
-
-    if inner_char_w < 3 or inner_char_h < 1:
-        return None
-
-    return best_cols, best_rows, inner_char_w, inner_char_h
-
+    return None
 
 class PiletopApp(App):
     BINDINGS = [
