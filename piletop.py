@@ -36,7 +36,7 @@ def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_asp
                 best_cols = cols
                 best_rows = rows
 
-    total_cell_h = max(2, math.floor(terminal_h / best_rows) - 1)
+    total_cell_h = max(2, math.floor(terminal_h / best_rows))
     inner_char_h = max(1, total_cell_h - 1) 
     
     inner_char_w = max(2, round(inner_char_h * char_aspect))
@@ -90,8 +90,8 @@ class PiletopApp(App):
         self.draw_heatmap()
 
     def draw_heatmap(self) -> None:
-        terminal_w = max(10, self.size.width - 4)
-        terminal_h = max(6, self.size.height - 4)
+        terminal_w = max(10, self.size.width)
+        terminal_h = max(6, self.size.height)
 
         best_cols, best_rows, inner_char_w, inner_char_h = calculate_layout(
             core_count=self.core_count,
@@ -102,10 +102,11 @@ class PiletopApp(App):
 
         gap_style = Style(bgcolor="black")
         label_style = Style(color="white", bold=True)  
-        total_text = Text()
         
         indexed_cores = list(range(self.core_count))
         rows_data = [indexed_cores[i:i + best_cols] for i in range(0, self.core_count, best_cols)]
+        
+        all_lines = []
         
         for r_idx, row_cores in enumerate(rows_data):
             label_line = Text()
@@ -130,12 +131,10 @@ class PiletopApp(App):
                     color_lines[h].append(" " * inner_char_w, style=style)
                     color_lines[h].append(" ", style=gap_style)
             
-            total_text.append(label_line).append("\n")
-            for line in color_lines:
-                total_text.append(line).append("\n")
+            all_lines.append(label_line)
+            all_lines.extend(color_lines)
             
-            if r_idx < len(rows_data) - 1:
-                total_text.append("\n")
+        total_text = Text("\n").join(all_lines)
                 
         try:
             display = self.query_one("#main-display", Static)
