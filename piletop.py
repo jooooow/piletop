@@ -177,8 +177,8 @@ def main():
     parser.add_argument(
         "-i", "--interval",
         type=float,
-        default=0.1,
-        help="Refresh interval in seconds (default: 0.1)"
+        default=0.5,
+        help="Refresh interval in seconds (default: 0.5)"
     )
     args = parser.parse_args()
 
