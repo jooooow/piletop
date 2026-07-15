@@ -1,9 +1,11 @@
+import argparse
+import sys
+import math
 import psutil
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 from rich.text import Text
 from rich.style import Style
-import math
 
 def get_heatmap_style(usage_percent: float) -> Style:
     factor = usage_percent / 100.0
@@ -27,6 +29,10 @@ class PiletopApp(App):
     }
     """
 
+    def __init__(self, interval: float = 0.5, **kwargs):
+        super().__init__(**kwargs)
+        self.interval = interval
+
     def compose(self) -> ComposeResult:
         self.core_count = psutil.cpu_count(logical=True)
         self.current_usages = [0.0] * self.core_count
@@ -34,7 +40,7 @@ class PiletopApp(App):
 
     def on_mount(self) -> None:
         psutil.cpu_percent(interval=None, percpu=True)
-        self.set_interval(0.5, self.refresh_data)
+        self.set_interval(self.interval, self.refresh_data)
 
     def on_resize(self) -> None:
         self.draw_heatmap()
@@ -86,7 +92,7 @@ class PiletopApp(App):
         indexed_cores = list(range(self.core_count))
         rows_data = [indexed_cores[i:i + best_cols] for i in range(0, self.core_count, best_cols)]
         
-        for r_idx, row_cores in enumerate(rows_data):
+        for row_cores in rows_data:
             lines = [Text() for _ in range(inner_char_h)]
             
             for core_id in row_cores:
@@ -125,7 +131,22 @@ class PiletopApp(App):
             pass
 
 def main():
-    app = PiletopApp()
+    parser = argparse.ArgumentParser(
+        description="A real-time CPU heatmap terminal visualizer"
+    )
+    parser.add_argument(
+        "-i", "--interval",
+        type=float,
+        default=0.5,
+        help="Refresh interval in seconds (default: 0.5)"
+    )
+    args = parser.parse_args()
+
+    if args.interval <= 0:
+        print("Error: Refresh interval must be greater than 0.", file=sys.stderr)
+        sys.exit(1)
+
+    app = PiletopApp(interval=args.interval)
     app.run()
 
 if __name__ == "__main__":
