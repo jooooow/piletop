@@ -1,0 +1,18 @@
+[project]
+name = "piletop"
+version = "0.1.0"
+description = "A real-time CPU heatmap terminal visualizer"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.13"
+dependencies = [
+    "psutil>=7.2.2",
+    "textual>=1.0.0",
+]
+
+[project.scripts]
+piletop = "piletop:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
