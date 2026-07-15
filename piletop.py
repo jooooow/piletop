@@ -14,6 +14,47 @@ def get_heatmap_style(usage_percent: float) -> Style:
     b = 0
     return Style(color=f"rgb({r},{g},{b})")
 
+def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_aspect: float = 2.0) -> tuple[int, int, int, int, int]:
+    best_cols = 1
+    best_rows = core_count
+    best_score = (float('inf'), float('inf'))
+
+    for cols in range(1, core_count + 1):
+        rows = math.ceil(core_count / cols)
+        
+        # 计算空置格子数量
+        empty_slots = (cols * rows) - core_count
+        
+        cell_w = terminal_w / cols
+        cell_h = terminal_h / rows
+        cell_h_equivalent_w = cell_h * char_aspect
+        aspect_ratio = cell_w / cell_h_equivalent_w
+        
+        ratio_deviation = abs(aspect_ratio - 1.2)
+        
+        if cell_w >= 4 and cell_h >= 1: 
+            current_score = (empty_slots, ratio_deviation)
+            if current_score < best_score:
+                best_score = current_score
+                best_cols = cols
+                best_rows = rows
+
+    inner_char_h = max(1, math.floor(terminal_h / best_rows) - 1)
+    inner_char_w = max(2, round(inner_char_h * char_aspect))
+    
+    max_width = math.floor(terminal_w / best_cols) - 1
+    max_width = max(2, max_width)
+    if inner_char_w > max_width:
+        inner_char_w = max_width
+
+    if inner_char_w % 2 != 0 and inner_char_w > 2:
+        inner_char_w = inner_char_w - 1
+
+    number_row_idx = (inner_char_h - 1) // 2
+
+    return best_cols, best_rows, inner_char_w, inner_char_h, number_row_idx
+
+
 class PiletopApp(App):
     BINDINGS = [("q", "quit", "Quit")]
     CHAR_ASPECT = 2.0
@@ -53,37 +94,12 @@ class PiletopApp(App):
         terminal_w = max(10, self.size.width - 4)
         terminal_h = max(6, self.size.height - 2)
 
-        best_cols = 1
-        best_rows = self.core_count
-        best_score = float('inf')
-
-        for cols in range(1, self.core_count + 1):
-            rows = math.ceil(self.core_count / cols)
-            cell_w = terminal_w / cols
-            cell_h = terminal_h / rows
-            cell_h_equivalent_w = cell_h * self.CHAR_ASPECT
-            aspect_ratio = cell_w / cell_h_equivalent_w
-            score = abs(aspect_ratio - 1.2)
-            
-            if cell_w >= 4 and cell_h >= 1: 
-                if score < best_score:
-                    best_score = score
-                    best_cols = cols
-                    best_rows = rows
-
-        inner_char_h = max(1, math.floor(terminal_h / best_rows) - 1)
-        inner_char_h = max(1, inner_char_h)
-        inner_char_w = max(2, round(inner_char_h * self.CHAR_ASPECT))
-        
-        max_width = math.floor(terminal_w / best_cols) - 1
-        max_width = max(2, max_width)
-        if inner_char_w > max_width:
-            inner_char_w = max_width
-
-        if inner_char_w % 2 != 0 and inner_char_w > 2:
-            inner_char_w = inner_char_w - 1
-
-        number_row_idx = (inner_char_h - 1) // 2
+        best_cols, best_rows, inner_char_w, inner_char_h, number_row_idx = calculate_layout(
+            core_count=self.core_count,
+            terminal_w=terminal_w,
+            terminal_h=terminal_h,
+            char_aspect=self.CHAR_ASPECT
+        )
 
         num_style = Style(color="white", bold=True)
         gap_style = Style(bgcolor="black")
@@ -99,6 +115,8 @@ class PiletopApp(App):
                 core_usage = self.current_usages[core_id]
                 style = get_heatmap_style(core_usage)
                 
+                bg_color_str = style.color.name if style.color else "black"
+                
                 for h in range(inner_char_h):
                     if h == number_row_idx:
                         label = f"{core_id}"
@@ -112,7 +130,7 @@ class PiletopApp(App):
                             right_spaces = remaining_space - left_spaces
                             
                             lines[h].append("█" * left_spaces, style=style)
-                            lines[h].append(label, style=num_style + Style(bgcolor=style.color))
+                            lines[h].append(label, style=num_style + Style(bgcolor=bg_color_str))
                             lines[h].append("█" * right_spaces, style=style)
                     else:
                         lines[h].append("█" * inner_char_w, style=style)
