@@ -8,6 +8,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Static
 from rich.text import Text
 from rich.style import Style
+from rich.markup import escape
 
 OLD_CONFIG_FILE = Path.home() / ".piletoprc"
 XDG_CONFIG_DIR = Path.home() / ".config" / "piletop"
@@ -210,7 +211,8 @@ class PiletopApp(App):
 
         try:
             footer = self.query_one("#footer-display")
-            footer.update(f"\[q] Quit | \[t] Theme: {theme_name}")
+            msg = escape(f"[q] Quit | [t] Theme: {theme_name}")
+            footer.update(msg)
         except Exception:
             pass
 
