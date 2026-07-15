@@ -59,49 +59,41 @@ class PiletopApp(App):
             aspect_ratio = cell_w / cell_h_equivalent_w
             score = abs(aspect_ratio - 1.2)
             
-            if cell_w >= 6 and cell_h >= 3: 
+            if cell_w >= 4 and cell_h >= 1: 
                 if score < best_score:
                     best_score = score
                     best_cols = cols
                     best_rows = rows
 
-        max_cell_char_w = math.floor(terminal_w / best_cols) - 2 
-        max_cell_char_h = math.floor(terminal_h / best_rows) - 1 
-
-        max_cell_char_w = max(6, max_cell_char_w)
-        max_cell_char_h = max(3, max_cell_char_h)
-
-        inner_char_h = max(1, max_cell_char_h - 2) 
+        inner_char_h = max(1, math.floor(terminal_h / best_rows) - 1)
+        inner_char_h = max(1, inner_char_h)
         inner_char_w = max(2, round(inner_char_h * self.CHAR_ASPECT))
         
-        if inner_char_w + 2 > max_cell_char_w:
-            inner_char_w = max_cell_char_w - 2
+        max_width = math.floor(terminal_w / best_cols) - 1
+        max_width = max(2, max_width)
+        if inner_char_w > max_width:
+            inner_char_w = max_width
 
-        if inner_char_w % 2 != 0:
-            inner_char_w = max(2, inner_char_w - 1)
+        if inner_char_w % 2 != 0 and inner_char_w > 2:
+            inner_char_w = inner_char_w - 1
 
-        number_row_idx = 1 + (inner_char_h - 1) // 2
+        number_row_idx = (inner_char_h - 1) // 2
 
-        border_style = Style(color="rgb(80,80,80)")
         num_style = Style(color="white", bold=True)
+        gap_style = Style(bgcolor="black")
         total_text = Text()
         
         indexed_cores = list(range(self.core_count))
         rows_data = [indexed_cores[i:i + best_cols] for i in range(0, self.core_count, best_cols)]
         
         for r_idx, row_cores in enumerate(rows_data):
-            lines = [Text() for _ in range(inner_char_h + 2)]
+            lines = [Text() for _ in range(inner_char_h)]
             
             for core_id in row_cores:
                 core_usage = self.current_usages[core_id]
                 style = get_heatmap_style(core_usage)
                 
-                lines[0].append("┌" + "─" * inner_char_w + "┐", style=border_style)
-                lines[0].append("  ")
-                
-                for h in range(1, inner_char_h + 1):
-                    lines[h].append("│", style=border_style)
-                    
+                for h in range(inner_char_h):
                     if h == number_row_idx:
                         label = f"{core_id}"
                         label_len = len(label)
@@ -118,18 +110,13 @@ class PiletopApp(App):
                             lines[h].append("█" * right_spaces, style=style)
                     else:
                         lines[h].append("█" * inner_char_w, style=style)
-                        
-                    lines[h].append("│", style=border_style)
-                    lines[h].append("  ")
-                
-                lines[-1].append("└" + "─" * inner_char_w + "┘", style=border_style)
-                lines[-1].append("  ")
+                    
+                    lines[h].append(" ", style=gap_style)
             
             for line in lines:
                 total_text.append(line).append("\n")
-                
-            if r_idx < len(rows_data) - 1:
-                total_text.append("\n")
+            
+            total_text.append("\n")
                 
         try:
             display = self.query_one("#main-display", Static)
