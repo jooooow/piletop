@@ -12,34 +12,33 @@ def get_heatmap_style(usage_percent: float) -> Style:
     r = int(255 * factor)
     g = int(255 * (1.0 - factor))
     b = 0
-    return Style(color=f"rgb({r},{g},{b})")
+    return Style(bgcolor=f"rgb({r},{g},{b})")
 
-def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_aspect: float = 2.0) -> tuple[int, int, int, int, int]:
+def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_aspect: float = 2.0) -> tuple[int, int, int, int]:
     best_cols = 1
     best_rows = core_count
     best_score = (float('inf'), float('inf'))
 
     for cols in range(1, core_count + 1):
         rows = math.ceil(core_count / cols)
-        
-        # 计算空置格子数量
         empty_slots = (cols * rows) - core_count
         
         cell_w = terminal_w / cols
         cell_h = terminal_h / rows
         cell_h_equivalent_w = cell_h * char_aspect
         aspect_ratio = cell_w / cell_h_equivalent_w
-        
         ratio_deviation = abs(aspect_ratio - 1.2)
         
-        if cell_w >= 4 and cell_h >= 1: 
+        if cell_w >= 4 and cell_h >= 2: 
             current_score = (empty_slots, ratio_deviation)
             if current_score < best_score:
                 best_score = current_score
                 best_cols = cols
                 best_rows = rows
 
-    inner_char_h = max(1, math.floor(terminal_h / best_rows) - 1)
+    total_cell_h = max(2, math.floor(terminal_h / best_rows) - 1)
+    inner_char_h = max(1, total_cell_h - 1) 
+    
     inner_char_w = max(2, round(inner_char_h * char_aspect))
     
     max_width = math.floor(terminal_w / best_cols) - 1
@@ -50,9 +49,7 @@ def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_asp
     if inner_char_w % 2 != 0 and inner_char_w > 2:
         inner_char_w = inner_char_w - 1
 
-    number_row_idx = (inner_char_h - 1) // 2
-
-    return best_cols, best_rows, inner_char_w, inner_char_h, number_row_idx
+    return best_cols, best_rows, inner_char_w, inner_char_h
 
 
 class PiletopApp(App):
@@ -62,11 +59,13 @@ class PiletopApp(App):
     CSS = """
     Screen {
         background: black;
+        overflow: hidden; 
     }
     #main-display {
         width: 100%;
         height: 100%;
         content-align: center middle;
+        overflow: hidden; 
     }
     """
 
@@ -92,55 +91,51 @@ class PiletopApp(App):
 
     def draw_heatmap(self) -> None:
         terminal_w = max(10, self.size.width - 4)
-        terminal_h = max(6, self.size.height - 2)
+        terminal_h = max(6, self.size.height - 4)
 
-        best_cols, best_rows, inner_char_w, inner_char_h, number_row_idx = calculate_layout(
+        best_cols, best_rows, inner_char_w, inner_char_h = calculate_layout(
             core_count=self.core_count,
             terminal_w=terminal_w,
             terminal_h=terminal_h,
             char_aspect=self.CHAR_ASPECT
         )
 
-        num_style = Style(color="white", bold=True)
         gap_style = Style(bgcolor="black")
+        label_style = Style(color="white", bold=True)  
         total_text = Text()
         
         indexed_cores = list(range(self.core_count))
         rows_data = [indexed_cores[i:i + best_cols] for i in range(0, self.core_count, best_cols)]
         
-        for row_cores in rows_data:
-            lines = [Text() for _ in range(inner_char_h)]
+        for r_idx, row_cores in enumerate(rows_data):
+            label_line = Text()
+            color_lines = [Text() for _ in range(inner_char_h)]
             
             for core_id in row_cores:
                 core_usage = self.current_usages[core_id]
                 style = get_heatmap_style(core_usage)
                 
-                bg_color_str = style.color.name if style.color else "black"
+                label = f"#{core_id}"
+                label_len = len(label)
+                if inner_char_w >= label_len:
+                    remaining = inner_char_w - label_len
+                    left = remaining // 2
+                    right = remaining - left
+                    label_line.append(" " * left + label + " " * right, style=label_style)
+                else:
+                    label_line.append(label[:inner_char_w], style=label_style)
+                label_line.append(" ", style=gap_style)
                 
                 for h in range(inner_char_h):
-                    if h == number_row_idx:
-                        label = f"{core_id}"
-                        label_len = len(label)
-                        
-                        if inner_char_w < label_len:
-                            lines[h].append("█" * inner_char_w, style=style)
-                        else:
-                            remaining_space = inner_char_w - label_len
-                            left_spaces = remaining_space // 2
-                            right_spaces = remaining_space - left_spaces
-                            
-                            lines[h].append("█" * left_spaces, style=style)
-                            lines[h].append(label, style=num_style + Style(bgcolor=bg_color_str))
-                            lines[h].append("█" * right_spaces, style=style)
-                    else:
-                        lines[h].append("█" * inner_char_w, style=style)
-                    
-                    lines[h].append(" ", style=gap_style)
+                    color_lines[h].append(" " * inner_char_w, style=style)
+                    color_lines[h].append(" ", style=gap_style)
             
-            for line in lines:
+            total_text.append(label_line).append("\n")
+            for line in color_lines:
                 total_text.append(line).append("\n")
             
-            total_text.append("\n")
+            if r_idx < len(rows_data) - 1:
+                total_text.append("\n")
                 
         try:
             display = self.query_one("#main-display", Static)
