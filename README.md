@@ -1,6 +1,8 @@
 # piletop
 
-A sleek, responsive, and adaptive CPU core heatmap visualizer for your terminal. Built with Python, Textual, and Rich.
+A sleek, responsive, and adaptive CPU core heatmap visualizer for your terminal. 
+
+Built with Python, Textual, and Rich.
 
 ## Features
 
@@ -10,7 +12,6 @@ A sleek, responsive, and adaptive CPU core heatmap visualizer for your terminal.
 
 ## Installation
 
-You can run or install it easily using `uv` or `pip`:
-
-### Using uv (Recommended)
-
+```
+uv tool install git+https://github.com/jooooow/piletop.git 
+```
