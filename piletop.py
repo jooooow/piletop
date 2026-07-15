@@ -3,38 +3,71 @@ import sys
 import math
 import psutil
 import random
+from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 from rich.text import Text
 from rich.style import Style
 
+OLD_CONFIG_FILE = Path.home() / ".piletoprc"
+XDG_CONFIG_DIR = Path.home() / ".config" / "piletop"
+CONFIG_FILE = XDG_CONFIG_DIR / "config"
+
 THEMES = {
     "classic": {
-        "low": (0, 255, 0),      # 绿
-        "high": (255, 0, 0),     # 红
+        "low": (0, 255, 0),
+        "high": (255, 0, 0),
         "name": "Classic (Green -> Red)"
     },
     "cyberpunk": {
-        "low": (0, 40, 150),     # 深蓝
-        "high": (255, 0, 128),   # 荧光粉
+        "low": (0, 40, 150),
+        "high": (255, 0, 128),
         "name": "Cyberpunk (Neon Blue -> Pink)"
     },
     "dracula": {
-        "low": (95, 0, 135),     # 幽灵紫
-        "high": (255, 135, 0),   # 橘红
+        "low": (95, 0, 135),
+        "high": (255, 135, 0),
         "name": "Dracula (Purple -> Orange)"
     },
     "ice": {
-        "low": (0, 50, 100),     # 深海蓝
-        "high": (0, 255, 200),   # 极光青
+        "low": (0, 50, 100),
+        "high": (0, 255, 200),
         "name": "Ice (Deep Blue -> Cyan)"
     },
     "monochrome": {
-        "low": (30, 30, 30),     # 暗灰
-        "high": (255, 255, 255), # 纯白
+        "low": (30, 30, 30),
+        "high": (255, 255, 255),
         "name": "Monochrome (Dark -> White)"
     }
 }
+
+def load_saved_theme(fallback: str) -> str:
+    targets = [CONFIG_FILE, OLD_CONFIG_FILE]
+    for path in targets:
+        if path.exists():
+            try:
+                content = path.read_text().strip()
+                for line in content.splitlines():
+                    if line.startswith("theme="):
+                        theme_val = line.split("=", 1)[1].strip()
+                        if theme_val in THEMES:
+                            return theme_val
+            except Exception:
+                pass
+    return fallback
+
+def save_theme(theme_name: str) -> None:
+    try:
+        if not XDG_CONFIG_DIR.exists():
+            XDG_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        CONFIG_FILE.write_text(f"theme={theme_name}\n")
+        if OLD_CONFIG_FILE.exists():
+            try:
+                OLD_CONFIG_FILE.unlink()
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 def interpolate_color(low: tuple[int, int, int], high: tuple[int, int, int], factor: float) -> Style:
     r = int(low[0] + (high[0] - low[0]) * factor)
@@ -123,7 +156,9 @@ class PiletopApp(App):
         self.interval = interval
         self.mock_cores = mock_cores
         self.theme_keys = list(THEMES.keys())
-        self.current_theme_index = self.theme_keys.index(initial_theme) if initial_theme in THEMES else 0
+        
+        saved_theme = load_saved_theme(fallback=initial_theme)
+        self.current_theme_index = self.theme_keys.index(saved_theme)
 
     def get_current_theme_colors(self) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
         theme_cfg = THEMES[self.theme_keys[self.current_theme_index]]
@@ -131,6 +166,7 @@ class PiletopApp(App):
 
     def action_next_theme(self) -> None:
         self.current_theme_index = (self.current_theme_index + 1) % len(self.theme_keys)
+        save_theme(self.theme_keys[self.current_theme_index])
         self.draw_heatmap()
 
     def compose(self) -> ComposeResult:
@@ -160,9 +196,7 @@ class PiletopApp(App):
 
     def draw_heatmap(self) -> None:
         terminal_w = max(1, self.size.width)
-        
         terminal_h_with_footer = max(1, self.size.height - 1)
-        terminal_h_without_footer = max(1, self.size.height)
 
         layout = calculate_layout(
             core_count=self.core_count,
@@ -174,21 +208,20 @@ class PiletopApp(App):
         low_color, high_color = self.get_current_theme_colors()
         theme_name = THEMES[self.theme_keys[self.current_theme_index]]["name"]
 
-        if layout is None:
-            try:
-                self.query_one("#footer-display").visible = False
-            except Exception:
-                pass
-            
-            terminal_h = terminal_h_without_footer
+        try:
+            footer = self.query_one("#footer-display")
+            footer.update(f"\[q] Quit | \[t] Theme: {theme_name}")
+        except Exception:
+            pass
 
+        if layout is None:
             best_cols = None
             best_rows = None
             best_score = float('inf')
             
             for cols in range(1, self.core_count + 1):
                 rows = math.ceil(self.core_count / cols)
-                if cols <= terminal_w and rows <= terminal_h:
+                if cols <= terminal_w and rows <= terminal_h_with_footer:
                     empty_slots = (cols * rows) - self.core_count
                     if empty_slots < best_score:
                         best_score = empty_slots
@@ -204,7 +237,7 @@ class PiletopApp(App):
                 )
             else:
                 cell_w = max(1, math.floor(terminal_w / best_cols))
-                cell_h = max(1, math.floor(terminal_h / best_rows))
+                cell_h = max(1, math.floor(terminal_h_with_footer / best_rows))
                 
                 indexed_cores = list(range(self.core_count))
                 rows_data = [indexed_cores[i:i + best_cols] for i in range(0, self.core_count, best_cols)]
@@ -224,13 +257,6 @@ class PiletopApp(App):
                 
                 total_text = Text("\n").join(all_lines)
         else:
-            try:
-                footer = self.query_one("#footer-display")
-                footer.visible = True
-                footer.update(f"\[q] Quit | \[t] Theme: {theme_name}")
-            except Exception:
-                pass
-
             best_cols, best_rows, inner_char_w, inner_char_h = layout
             gap_style = Style(bgcolor="black")
             label_style = Style(color="white", bold=True)  
