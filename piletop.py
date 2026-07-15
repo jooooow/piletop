@@ -15,6 +15,9 @@ def get_heatmap_style(usage_percent: float) -> Style:
     return Style(bgcolor=f"rgb({r},{g},{b})")
 
 def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_aspect: float = 2.0) -> tuple[int, int, int, int] | None:
+    if terminal_h < 3 or terminal_w < 6:
+        return None
+
     best_cols = None
     best_rows = None
     best_score = (float('inf'), float('inf'))
@@ -29,7 +32,7 @@ def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_asp
         aspect_ratio = cell_w / cell_h_equivalent_w
         ratio_deviation = abs(aspect_ratio - 1.2)
         
-        if cell_w >= 4 and cell_h >= 2: 
+        if cell_w >= 3 and cell_h >= 2: 
             current_score = (empty_slots, ratio_deviation)
             if best_score is None or current_score < best_score:
                 best_score = current_score
@@ -52,7 +55,7 @@ def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_asp
     if inner_char_w % 2 != 0 and inner_char_w > 2:
         inner_char_w = inner_char_w - 1
 
-    if inner_char_w < 4 or inner_char_h < 1:
+    if inner_char_w < 3 or inner_char_h < 1:
         return None
 
     return best_cols, best_rows, inner_char_w, inner_char_h
@@ -109,8 +112,8 @@ class PiletopApp(App):
         self.draw_heatmap()
 
     def draw_heatmap(self) -> None:
-        terminal_w = max(10, self.size.width)
-        terminal_h = max(6, self.size.height - 1)
+        terminal_w = max(1, self.size.width)
+        terminal_h = max(1, self.size.height - 1)
 
         layout = calculate_layout(
             core_count=self.core_count,
@@ -144,7 +147,7 @@ class PiletopApp(App):
                     core_usage = self.current_usages[core_id]
                     style = get_heatmap_style(core_usage)
                     
-                    label = f"#{core_id}"
+                    label = f"{core_id}"
                     label_len = len(label)
                     if inner_char_w >= label_len:
                         remaining = inner_char_w - label_len
