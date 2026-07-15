@@ -8,11 +8,38 @@ from textual.widgets import Static
 from rich.text import Text
 from rich.style import Style
 
-def get_heatmap_style(usage_percent: float) -> Style:
-    factor = usage_percent / 100.0
-    r = int(255 * factor)
-    g = int(255 * (1.0 - factor))
-    b = 0
+THEMES = {
+    "classic": {
+        "low": (0, 255, 0),      # 绿
+        "high": (255, 0, 0),     # 红
+        "name": "Classic (Green -> Red)"
+    },
+    "cyberpunk": {
+        "low": (0, 40, 150),     # 深蓝
+        "high": (255, 0, 128),   # 荧光粉
+        "name": "Cyberpunk (Neon Blue -> Pink)"
+    },
+    "dracula": {
+        "low": (95, 0, 135),     # 幽灵紫
+        "high": (255, 135, 0),   # 橘红
+        "name": "Dracula (Purple -> Orange)"
+    },
+    "ice": {
+        "low": (0, 50, 100),     # 深海蓝
+        "high": (0, 255, 200),   # 极光青
+        "name": "Ice (Deep Blue -> Cyan)"
+    },
+    "monochrome": {
+        "low": (30, 30, 30),     # 暗灰
+        "high": (255, 255, 255), # 纯白
+        "name": "Monochrome (Dark -> White)"
+    }
+}
+
+def interpolate_color(low: tuple[int, int, int], high: tuple[int, int, int], factor: float) -> Style:
+    r = int(low[0] + (high[0] - low[0]) * factor)
+    g = int(low[1] + (high[1] - low[1]) * factor)
+    b = int(low[2] + (high[2] - low[2]) * factor)
     return Style(bgcolor=f"rgb({r},{g},{b})")
 
 def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_aspect: float = 2.0) -> tuple[int, int, int, int] | None:
@@ -63,7 +90,10 @@ def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_asp
 
 
 class PiletopApp(App):
-    BINDINGS = [("q", "quit", "Quit")]
+    BINDINGS = [
+        ("q", "quit", "Quit"),
+        ("t", "next_theme", "Switch Theme")
+    ]
     CHAR_ASPECT = 2.0
     
     CSS = """
@@ -88,10 +118,20 @@ class PiletopApp(App):
     }
     """
 
-    def __init__(self, interval: float = 0.1, mock_cores: int | None = None, **kwargs):
+    def __init__(self, interval: float = 0.1, mock_cores: int | None = None, initial_theme: str = "classic", **kwargs):
         super().__init__(**kwargs)
         self.interval = interval
         self.mock_cores = mock_cores
+        self.theme_keys = list(THEMES.keys())
+        self.current_theme_index = self.theme_keys.index(initial_theme) if initial_theme in THEMES else 0
+
+    def get_current_theme_colors(self) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+        theme_cfg = THEMES[self.theme_keys[self.current_theme_index]]
+        return theme_cfg["low"], theme_cfg["high"]
+
+    def action_next_theme(self) -> None:
+        self.current_theme_index = (self.current_theme_index + 1) % len(self.theme_keys)
+        self.draw_heatmap()
 
     def compose(self) -> ComposeResult:
         if self.mock_cores is not None:
@@ -101,10 +141,7 @@ class PiletopApp(App):
             
         self.current_usages = [0.0] * self.core_count
         yield Static(id="main-display")
-        yield Static(
-            "\[q] Quit | Red (High CPU) -> Green (Low CPU)", 
-            id="footer-display"
-        )
+        yield Static(id="footer-display")
 
     def on_mount(self) -> None:
         if self.mock_cores is None:
@@ -133,6 +170,9 @@ class PiletopApp(App):
             terminal_h=terminal_h_with_footer,
             char_aspect=self.CHAR_ASPECT
         )
+
+        low_color, high_color = self.get_current_theme_colors()
+        theme_name = THEMES[self.theme_keys[self.current_theme_index]]["name"]
 
         if layout is None:
             try:
@@ -178,14 +218,16 @@ class PiletopApp(App):
                                 core_usage = self.current_usages[core_id]
                             else:
                                 core_usage = 0.0
-                            style = get_heatmap_style(core_usage)
+                            style = interpolate_color(low_color, high_color, core_usage / 100.0)
                             line.append(" " * cell_w, style=style)
                         all_lines.append(line)
                 
                 total_text = Text("\n").join(all_lines)
         else:
             try:
-                self.query_one("#footer-display").visible = True
+                footer = self.query_one("#footer-display")
+                footer.visible = True
+                footer.update(f"\[q] Quit | \[t] Theme: {theme_name}")
             except Exception:
                 pass
 
@@ -207,7 +249,7 @@ class PiletopApp(App):
                         core_usage = self.current_usages[core_id]
                     else:
                         core_usage = 0.0
-                    style = get_heatmap_style(core_usage)
+                    style = interpolate_color(low_color, high_color, core_usage / 100.0)
                     
                     label = f"{core_id}"
                     label_len = len(label)
@@ -251,6 +293,13 @@ def main():
         default=None,
         help="Simulate a custom number of cores for debugging"
     )
+    parser.add_argument(
+        "-t", "--theme",
+        type=str,
+        choices=list(THEMES.keys()),
+        default="classic",
+        help="Initial color theme (default: classic)"
+    )
     args = parser.parse_args()
 
     if args.interval <= 0:
@@ -261,7 +310,7 @@ def main():
         print("Error: Custom core count must be greater than 0.", file=sys.stderr)
         sys.exit(1)
 
-    app = PiletopApp(interval=args.interval, mock_cores=args.cores)
+    app = PiletopApp(interval=args.interval, mock_cores=args.cores, initial_theme=args.theme)
     app.run()
 
 if __name__ == "__main__":
