@@ -76,55 +76,60 @@ def interpolate_color(low: tuple[int, int, int], high: tuple[int, int, int], fac
     b = int(low[2] + (high[2] - low[2]) * factor)
     return Style(bgcolor=f"rgb({r},{g},{b})")
 
-
-USER_COLOR_PALETTE = [
-    (255, 100, 100),
-    (100, 180, 255),
-    (100, 255, 100),
-    (255, 200, 100),
-    (200, 100, 255),
-    (100, 255, 255),
-    (255, 150, 200),
-    (150, 255, 150),
-    (255, 255, 100),
-    (200, 150, 255),
-    (255, 130, 80),
-    (80, 180, 200),
-]
-
+_PROCESS_CACHE = {}
 
 def get_user_cpu_data():
+    global _PROCESS_CACHE
     user_cpu = {}
+    current_pids = set()
+    
     try:
+        core_count = psutil.cpu_count(logical=True) or 1
+        system_max_cpu = core_count * 100.0
+
         for p in psutil.process_iter(['username', 'pid']):
             try:
-                cpu = p.cpu_percent(interval=None)
-                user = p.info.get('username') or 'unknown'
+                pid = p.info['pid']
+                user = p.info['username'] or 'unknown'
+                current_pids.add(pid)
+                
+                if pid in _PROCESS_CACHE and _PROCESS_CACHE[pid]['user'] == user:
+                    proc_obj = _PROCESS_CACHE[pid]['obj']
+                    cpu = proc_obj.cpu_percent(interval=None)
+                else:
+                    p.cpu_percent(interval=None) 
+                    _PROCESS_CACHE[pid] = {'obj': p, 'user': user}
+                    cpu = 0.0
+                
                 if user not in user_cpu:
                     user_cpu[user] = 0.0
                 user_cpu[user] += cpu
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
+                
+        dead_pids = set(_PROCESS_CACHE.keys()) - current_pids
+        for pid in dead_pids:
+            _PROCESS_CACHE.pop(pid, None)
+            
     except Exception:
         return []
 
-    sorted_users = sorted(user_cpu.items(), key=lambda x: x[1], reverse=True)
+    active_users = [(u, c) for u, c in user_cpu.items() if c > 0.5]
+    
+    sorted_users = sorted(active_users, key=lambda x: x[1], reverse=True)
     result = []
-    # Filter out users with no CPU usage
-    active_users = [(u, c) for u, c in sorted_users if c > 0.5]
-    total = sum(cpu for _, cpu in active_users)
-
-    if not active_users:
+    
+    if not sorted_users:
         return result
 
-    for i, (user, cpu) in enumerate(active_users[:3]):
-        pct = (cpu / total * 100) if total > 0 else 0
+    for i, (user, cpu) in enumerate(sorted_users[:3]):
+        pct = (cpu / system_max_cpu * 100)
         result.append((user, pct))
 
-    remaining = active_users[3:]
+    remaining = sorted_users[3:]
     if remaining:
-        others_pct = sum(cpu for _, cpu in remaining)
-        pct = (others_pct / total * 100) if total > 0 else 0
+        others_cpu = sum(cpu for _, cpu in remaining)
+        pct = (others_cpu / system_max_cpu * 100)
         result.append(('others', pct))
 
     return result
@@ -132,7 +137,6 @@ def get_user_cpu_data():
 def _format_username(user: str, max_len: int = 20) -> str:
     base = user.lower().split('.')[0] if '.' in user else user.split('@')[0].lower()
     return base[:max_len] + "\u2026" if len(base) > max_len else base
-
 
 def render_user_bar(bar_width: int):
     data = get_user_cpu_data()
@@ -144,7 +148,6 @@ def render_user_bar(bar_width: int):
 
     bar = Text(f" CPU {int(total_cpu)}%", style="dim rgb(150,150,150)")
 
-    # Collect entries first to check if they fit
     entries = []
     for idx, (user, pct) in enumerate(data):
         name = _format_username(user)
@@ -158,10 +161,7 @@ def render_user_bar(bar_width: int):
         return bar
 
     bar.append(" (" + ", ".join(entries) + ")")
-
     return bar
-
-
 
 def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_aspect: float = 2.0) -> tuple[int, int, int, int] | None:
     if terminal_h < 3 or terminal_w < 6:
@@ -183,7 +183,6 @@ def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_asp
             best_cols = min(core_count, max_cols)
             best_rows = math.ceil(core_count / best_cols)
             return best_cols, best_rows, inner_w, inner_h
-
 
     inner_w, inner_h = 2, 1
     cell_physical_w = inner_w + 1
@@ -234,7 +233,7 @@ class PiletopApp(App):
     }
     """
 
-    def __init__(self, interval: float = 0.1, mock_cores: int | None = None, initial_theme: str = "classic", **kwargs):
+    def __init__(self, interval: float = 0.5, mock_cores: int | None = None, initial_theme: str = "classic", **kwargs):
         super().__init__(**kwargs)
         self.interval = interval
         self.mock_cores = mock_cores
@@ -256,7 +255,7 @@ class PiletopApp(App):
         if self.mock_cores is not None:
             self.core_count = self.mock_cores
         else:
-            self.core_count = psutil.cpu_count(logical=True)
+            self.core_count = psutil.cpu_count(logical=True) or 1
             
         self.current_usages = [0.0] * self.core_count
         yield Static(id="user-bar-display")
@@ -265,8 +264,12 @@ class PiletopApp(App):
 
     def on_mount(self) -> None:
         if self.mock_cores is None:
-            psutil.cpu_percent(interval=None, percpu=True)
-            psutil.cpu_percent(interval=None, percpu=False)
+            try:
+                psutil.cpu_percent(interval=None, percpu=True)
+                psutil.cpu_percent(interval=None, percpu=False)
+                get_user_cpu_data()
+            except Exception:
+                pass
         self.set_interval(self.interval, self.refresh_data)
 
     def on_resize(self) -> None:
@@ -281,12 +284,12 @@ class PiletopApp(App):
 
     def draw_heatmap(self) -> None:
         terminal_w = max(1, self.size.width)
-        terminal_h_with_footer = max(1, self.size.height - 1)
+        terminal_h_available = max(1, self.size.height - 2)
 
         layout = calculate_layout(
             core_count=self.core_count,
             terminal_w=terminal_w,
-            terminal_h=terminal_h_with_footer,
+            terminal_h=terminal_h_available,
             char_aspect=self.CHAR_ASPECT
         )
 
@@ -307,7 +310,7 @@ class PiletopApp(App):
             
             for cols in range(1, self.core_count + 1):
                 rows = math.ceil(self.core_count / cols)
-                if cols <= terminal_w and rows <= terminal_h_with_footer:
+                if cols <= terminal_w and rows <= terminal_h_available:
                     empty_slots = (cols * rows) - self.core_count
                     if empty_slots < best_score:
                         best_score = empty_slots
@@ -323,7 +326,7 @@ class PiletopApp(App):
                 )
             else:
                 cell_w = max(1, math.floor(terminal_w / best_cols))
-                cell_h = max(1, math.floor(terminal_h_with_footer / best_rows))
+                cell_h = max(1, math.floor(terminal_h_available / best_rows))
                 
                 indexed_cores = list(range(self.core_count))
                 rows_data = [indexed_cores[i:i + best_cols] for i in range(0, self.core_count, best_cols)]
@@ -344,7 +347,7 @@ class PiletopApp(App):
                 total_text = Text("\n").join(all_lines)
         else:
             best_cols, best_rows, inner_char_w, inner_char_h = layout
-            gap_style = Style(bgcolor="rgb(0,0,0)") # 强制使用真彩纯黑
+            gap_style = Style(bgcolor="rgb(0,0,0)") 
             label_style = Style(color="white", bold=True)  
             
             indexed_cores = list(range(self.core_count))
@@ -353,7 +356,6 @@ class PiletopApp(App):
             all_lines = []
             
             for r_idx, row_cores in enumerate(rows_data):
-                label_line = Text()
                 label_segments = []
                 
                 for core_id in row_cores:
