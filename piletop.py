@@ -9,6 +9,7 @@ from textual.widgets import Static
 from rich.text import Text
 from rich.style import Style
 from rich.markup import escape
+import colorsys
 
 OLD_CONFIG_FILE = Path.home() / ".piletoprc"
 XDG_CONFIG_DIR = Path.home() / ".config" / "piletop"
@@ -16,19 +17,14 @@ CONFIG_FILE = XDG_CONFIG_DIR / "config"
 
 THEMES = {
     "classic": {
-        "low": (0, 255, 0),
-        "high": (255, 0, 0),
+        "low": (20, 205, 20),
+        "high": (205, 20, 20),
         "name": "Classic (Green -> Red)"
     },
     "cyberpunk": {
-        "low": (0, 40, 150),
-        "high": (255, 0, 128),
+        "low": (20, 40, 150),
+        "high": (225, 20, 128),
         "name": "Cyberpunk (Neon Blue -> Pink)"
-    },
-    "dracula": {
-        "low": (95, 0, 135),
-        "high": (255, 135, 0),
-        "name": "Dracula (Purple -> Orange)"
     },
     "ice": {
         "low": (0, 50, 100),
@@ -39,7 +35,12 @@ THEMES = {
         "low": (30, 30, 30),
         "high": (255, 255, 255),
         "name": "Monochrome (Dark -> White)"
-    }
+    },
+    "aurora": {
+        "low": (10, 25, 47),
+        "high": (0, 230, 118),
+        "name": "Aurora (Midnight -> Neon Green)"
+    },
 }
 
 def load_saved_theme(fallback: str) -> str:
@@ -70,11 +71,26 @@ def save_theme(theme_name: str) -> None:
     except Exception:
         pass
 
+
 def interpolate_color(low: tuple[int, int, int], high: tuple[int, int, int], factor: float) -> Style:
-    r = int(low[0] + (high[0] - low[0]) * factor)
-    g = int(low[1] + (high[1] - low[1]) * factor)
-    b = int(low[2] + (high[2] - low[2]) * factor)
-    return Style(bgcolor=f"rgb({r},{g},{b})")
+    r1, g1, b1 = [v / 255.0 for v in low]
+    r2, g2, b2 = [v / 255.0 for v in high]
+    
+    h1, l1, s1 = colorsys.rgb_to_hls(r1, g1, b1)
+    h2, l2, s2 = colorsys.rgb_to_hls(r2, g2, b2)
+    
+    if abs(h2 - h1) > 0.5:
+        if h2 > h1:
+            h1 += 1.0
+        else:
+            h2 += 1.0
+            
+    h = (h1 + (h2 - h1) * factor) % 1.0
+    l = l1 + (l2 - l1) * factor
+    s = s1 + (s2 - s1) * factor
+    
+    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    return Style(bgcolor=f"rgb({int(r*255)},{int(g*255)},{int(b*255)})")
 
 _PROCESS_CACHE = {}
 
