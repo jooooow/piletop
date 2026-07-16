@@ -201,6 +201,7 @@ def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_asp
 class PiletopApp(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
+        ("ctrl+c", "quit", "Exit"),
         ("t", "next_theme", "Switch Theme")
     ]
     CHAR_ASPECT = 2.0
