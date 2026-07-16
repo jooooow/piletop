@@ -76,6 +76,93 @@ def interpolate_color(low: tuple[int, int, int], high: tuple[int, int, int], fac
     b = int(low[2] + (high[2] - low[2]) * factor)
     return Style(bgcolor=f"rgb({r},{g},{b})")
 
+
+USER_COLOR_PALETTE = [
+    (255, 100, 100),
+    (100, 180, 255),
+    (100, 255, 100),
+    (255, 200, 100),
+    (200, 100, 255),
+    (100, 255, 255),
+    (255, 150, 200),
+    (150, 255, 150),
+    (255, 255, 100),
+    (200, 150, 255),
+    (255, 130, 80),
+    (80, 180, 200),
+]
+
+
+def get_user_cpu_data():
+    user_cpu = {}
+    try:
+        for p in psutil.process_iter(['username', 'pid']):
+            try:
+                cpu = p.cpu_percent(interval=None)
+                user = p.info.get('username') or 'unknown'
+                if user not in user_cpu:
+                    user_cpu[user] = 0.0
+                user_cpu[user] += cpu
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+    except Exception:
+        return []
+
+    sorted_users = sorted(user_cpu.items(), key=lambda x: x[1], reverse=True)
+    result = []
+    # Filter out users with no CPU usage
+    active_users = [(u, c) for u, c in sorted_users if c > 0.5]
+    total = sum(cpu for _, cpu in active_users)
+
+    if not active_users:
+        return result
+
+    for i, (user, cpu) in enumerate(active_users[:3]):
+        pct = (cpu / total * 100) if total > 0 else 0
+        result.append((user, pct))
+
+    remaining = active_users[3:]
+    if remaining:
+        others_pct = sum(cpu for _, cpu in remaining)
+        pct = (others_pct / total * 100) if total > 0 else 0
+        result.append(('others', pct))
+
+    return result
+
+def _format_username(user: str, max_len: int = 20) -> str:
+    base = user.lower().split('.')[0] if '.' in user else user.split('@')[0].lower()
+    return base[:max_len] + "\u2026" if len(base) > max_len else base
+
+
+def render_user_bar(bar_width: int):
+    data = get_user_cpu_data()
+
+    try:
+        total_cpu = psutil.cpu_percent(interval=None, percpu=False)
+    except Exception:
+        total_cpu = 0
+
+    bar = Text(f" CPU {int(total_cpu)}%", style="dim rgb(150,150,150)")
+
+    # Collect entries first to check if they fit
+    entries = []
+    for idx, (user, pct) in enumerate(data):
+        name = _format_username(user)
+        entry = f"{name}: {int(pct)}%"
+        test_len = len(" ".join([f'({e})' for e in entries + [entry]]))
+        if test_len > bar_width - 20:
+            break
+        entries.append(entry)
+
+    if not entries:
+        return bar
+
+    bar.append(" (" + ", ".join(entries) + ")")
+
+    return bar
+
+
+
 def calculate_layout(core_count: int, terminal_w: int, terminal_h: int, char_aspect: float = 2.0) -> tuple[int, int, int, int] | None:
     if terminal_h < 3 or terminal_w < 6:
         return None
@@ -124,6 +211,12 @@ class PiletopApp(App):
         overflow: hidden; 
         layout: vertical;
     }
+    #user-bar-display {
+        width: 100%;
+        height: 1;
+        content-align: left middle;
+        overflow: hidden;
+    }
     #main-display {
         width: 100%;
         height: 1fr;
@@ -165,12 +258,14 @@ class PiletopApp(App):
             self.core_count = psutil.cpu_count(logical=True)
             
         self.current_usages = [0.0] * self.core_count
+        yield Static(id="user-bar-display")
         yield Static(id="main-display")
         yield Static(id="footer-display")
 
     def on_mount(self) -> None:
         if self.mock_cores is None:
             psutil.cpu_percent(interval=None, percpu=True)
+            psutil.cpu_percent(interval=None, percpu=False)
         self.set_interval(self.interval, self.refresh_data)
 
     def on_resize(self) -> None:
@@ -296,6 +391,14 @@ class PiletopApp(App):
                 
             total_text = Text("\n").join(all_lines)
                 
+        bar_w = max(1, terminal_w)
+        user_bar = render_user_bar(bar_w)
+        try:
+            user_display = self.query_one("#user-bar-display", Static)
+            user_display.update(user_bar)
+        except Exception:
+            pass
+
         try:
             display = self.query_one("#main-display", Static)
             display.update(total_text)
