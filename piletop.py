@@ -103,6 +103,11 @@ def get_user_cpu_data():
         core_count = psutil.cpu_count(logical=True) or 1
         system_max_cpu = core_count * 100.0
 
+        try:
+            total_system_cpu = psutil.cpu_percent(interval=None, percpu=False) * core_count
+        except Exception:
+            total_system_cpu = 0.0
+
         for p in psutil.process_iter(['username', 'pid']):
             try:
                 pid = p.info['pid']
@@ -128,15 +133,12 @@ def get_user_cpu_data():
             _PROCESS_CACHE.pop(pid, None)
             
     except Exception:
-        return []
+        return [], 0.0
 
-    active_users = [(u, c) for u, c in user_cpu.items() if c > 0.5]
-    
+    active_users = [(u, c) for u, c in user_cpu.items() if c > 0]
+
     sorted_users = sorted(active_users, key=lambda x: x[1], reverse=True)
     result = []
-    
-    if not sorted_users:
-        return result
 
     for i, (user, cpu) in enumerate(sorted_users[:3]):
         pct = (cpu / system_max_cpu * 100)
@@ -148,20 +150,17 @@ def get_user_cpu_data():
         pct = (others_cpu / system_max_cpu * 100)
         result.append(('others', pct))
 
-    return result
+    accounted = sum(user_cpu.values())
+    residual = max(0.0, total_system_cpu - accounted)
+    result.append(('system', residual / system_max_cpu * 100))
+
+    return result, total_system_cpu / core_count
 
 def _format_username(user: str, max_len: int = 20) -> str:
     base = user.lower().split('.')[0] if '.' in user else user.split('@')[0].lower()
     return base[:max_len] + "\u2026" if len(base) > max_len else base
 
-def render_user_bar(bar_width: int):
-    data = get_user_cpu_data()
-
-    try:
-        total_cpu = psutil.cpu_percent(interval=None, percpu=False)
-    except Exception:
-        total_cpu = 0
-
+def render_user_bar(bar_width: int, data: list, total_cpu: float):
     bar = Text(f" CPU {int(total_cpu)}%", style="dim rgb(150,150,150)")
 
     entries = []
@@ -169,9 +168,20 @@ def render_user_bar(bar_width: int):
         name = _format_username(user)
         entry = f"{name}: {int(pct)}%"
         test_len = len(" ".join([f'({e})' for e in entries + [entry]]))
+        if user == 'system':
+            continue
         if test_len > bar_width - 20:
             break
         entries.append(entry)
+
+    sys_idx = next((i for i, (u, _) in enumerate(data) if u == 'system'), None)
+    if sys_idx is not None:
+        user, pct = data[sys_idx]
+        name = _format_username(user)
+        entry = f"{name}: {int(pct)}%"
+        test_len = len(" ".join([f'({e})' for e in entries + [entry]]))
+        if test_len <= bar_width - 20:
+            entries.append(entry)
 
     if not entries:
         return bar
@@ -411,7 +421,8 @@ class PiletopApp(App):
             total_text = Text("\n").join(all_lines)
                 
         bar_w = max(1, terminal_w)
-        user_bar = render_user_bar(bar_w)
+        data, total_cpu = get_user_cpu_data()
+        user_bar = render_user_bar(bar_w, data, total_cpu)
         try:
             user_display = self.query_one("#user-bar-display", Static)
             user_display.update(user_bar)
