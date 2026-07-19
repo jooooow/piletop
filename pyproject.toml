@@ -1,6 +1,6 @@
 [project]
 name = "piletop"
-version = "0.1.0"
+version = "1.0.0"
 description = "A real-time CPU heatmap terminal visualizer"
 readme = "README.md"
 license = { text = "MIT" }
